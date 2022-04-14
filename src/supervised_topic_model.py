@@ -153,7 +153,7 @@ class SupervisedTopicModel(nn.Module):
         return expected_outcome_untreated
 
 
-    def forward(self, bows, normalized_bows, treatment_labels, outcomes, dtype='real', use_supervised_loss=True):
+    def forward(self, bows, normalized_bows, treatment_labels, outcomes, is_label_binary=False, use_treatment_loss=True, use_outcome_loss=True):
         ## get \theta
         theta, kld_theta = self.get_theta(normalized_bows)
         beta = self.get_beta()
@@ -166,13 +166,14 @@ class SupervisedTopicModel(nn.Module):
         recon_loss = -(preds * bows).sum(1)
         recon_loss = recon_loss.mean()
 
-        supervised_loss=None
-        if use_supervised_loss:
-
+        treatment_loss=None
+        outcome_loss=None
+        if use_treatment_loss:
             #get treatment loss 
             treatment_logits = self.predict_treatment(theta).squeeze()
             treatment_loss = bce_loss(treatment_logits, treatment_labels)
 
+        if use_outcome_loss:
             #get expected outcome loss
             treated  = [treatment_labels == 1]
             untreated = [treatment_labels == 0]
@@ -181,14 +182,14 @@ class SupervisedTopicModel(nn.Module):
             expected_treated = self.predict_outcome_st_treat(theta, treatment_labels).squeeze()
             expected_untreated = self.predict_outcome_st_no_treat(theta, treatment_labels).squeeze()
 
-            if dtype == 'real':
-                outcome_loss_treated = mse_loss(expected_treated,outcomes_treated)
-                outcome_loss_untreated = mse_loss(expected_treated,outcomes_treated)
-            else:
+            if is_label_binary:
                 outcome_loss_treated = bce_loss(expected_treated,outcomes_treated)
                 outcome_loss_untreated = bce_loss(expected_treated,outcomes_treated)
+            else:
+                outcome_loss_treated = mse_loss(expected_treated,outcomes_treated)
+                outcome_loss_untreated = mse_loss(expected_treated,outcomes_treated)
 
-            supervised_loss = treatment_loss + outcome_loss_treated + outcome_loss_untreated
+            outcome_loss = outcome_loss_treated + outcome_loss_untreated
 
-        return recon_loss, supervised_loss, kld_theta
+        return recon_loss, outcome_loss, treatment_loss, kld_theta
 
